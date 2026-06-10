@@ -66,8 +66,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 # Multi-package monorepo: the Python services share this project config.
+# NOTE: the FastAPI app is the importable package ``app`` (lives at backend/app),
+# so we map backend/app -> app rather than packaging the non-package ``backend``
+# directory (which has no __init__.py and would not be importable as ``backend``).
 packages = [
-    "backend",
     "worker",
     "agents",
     "ingestion",
@@ -77,6 +79,9 @@ packages = [
     "email_agent",
     "evaluation",
 ]
+
+[tool.hatch.build.targets.wheel.sources]
+"backend/app" = "app"
 
 [tool.ruff]
 line-length = 100
@@ -90,8 +95,12 @@ ignore = ["E501"]   # line length handled by formatter
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["backend/tests", "tests"]
-# Repo root puts the top-level packages (ranking, dedup, email_agent, ...) on
-# the path; "backend" makes the FastAPI ``app`` package importable in tests.
+# importlib mode imports each test module under a unique name and does not insert
+# test dirs onto sys.path, so the two test directories (tests/ and backend/tests/)
+# never collide. Test dirs are intentionally NOT packages (no __init__.py).
+addopts = "--import-mode=importlib"
+# Declarative source roots: repo root exposes the top-level packages (ranking,
+# dedup, email_agent, ...); "backend" exposes the FastAPI ``app`` package.
 pythonpath = [".", "backend"]
 
 [tool.mypy]

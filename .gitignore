@@ -58,3 +58,6 @@ redisdata/
 
 # Evaluation outputs
 evaluation/reports/
+
+# Local Claude Code settings
+.claude/
