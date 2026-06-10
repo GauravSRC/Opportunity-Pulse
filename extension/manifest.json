@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "OpportunityPulse",
+  "version": "0.1.0",
+  "description": "Shows your live match score on opportunity listing pages.",
+  "permissions": ["activeTab", "storage", "scripting"],
+  "host_permissions": [
+    "https://boards.greenhouse.io/*",
+    "https://jobs.lever.co/*",
+    "https://*.github.io/*"
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "OpportunityPulse"
+  },
+  "background": {
+    "service_worker": "background/service_worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://boards.greenhouse.io/*",
+        "https://jobs.lever.co/*"
+      ],
+      "js": ["content/content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

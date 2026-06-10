@@ -1,0 +1,1 @@
+"""OpportunityPulse backend application package."""

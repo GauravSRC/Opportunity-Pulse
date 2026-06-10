@@ -1,0 +1,60 @@
+# Secrets / env
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.env-venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+.coverage.*
+dist/
+build/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+.pnpm-debug.log*
+
+# Models / data / caches
+models/cache/
+*.bin
+*.safetensors
+*.pt
+data/
+*.duckdb
+*.sqlite3
+
+# Playwright
+/test-results/
+/playwright-report/
+.playwright/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Docker / local
+*.log
+.docker/
+pgdata/
+redisdata/
+
+# Evaluation outputs
+evaluation/reports/

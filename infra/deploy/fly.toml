@@ -1,0 +1,30 @@
+# Fly.io deployment template (default cloud target). Render/Railway notes in
+# docs/architecture.md. Secrets are set with `fly secrets set KEY=...` (never in
+# this file). Managed Postgres+pgvector and Upstash/Redis are attached as
+# separate Fly resources; their URLs arrive as secrets.
+
+app = "opportunitypulse"
+primary_region = "iad"
+
+[build]
+  dockerfile = "infra/docker/backend.Dockerfile"
+
+[env]
+  APP_ENV = "production"
+  PROMETHEUS_ENABLED = "true"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[http_service.checks]]
+  method = "get"
+  path = "/healthz"
+  interval = "15s"
+  timeout = "2s"
+
+# TODO(phase-7): add a separate process/app for the Arq worker, and a Next.js
+# app (or deploy web to Vercel). Configure release_command for `alembic upgrade head`.

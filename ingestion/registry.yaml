@@ -1,0 +1,83 @@
+# Source registry — declarative config for every opportunity source.
+# Loaded at startup and synced into the opportunity_sources table. Each entry's
+# `adapter` must exist in ingestion/sources/__init__.py:ADAPTERS.
+#
+# access_method follows the fallback ladder:
+#   api -> ats_json -> rss -> sitemap -> search -> browser
+# See docs/sourcing.md for the full 30+ category plan.
+
+sources:
+  # --- ATS JSON (most robust, ToS-friendly) ---
+  - key: greenhouse_example
+    adapter: greenhouse
+    name: "Greenhouse (example company)"
+    category: jobs
+    access_method: ats_json
+    enabled: true
+    config:
+      slug: "examplecompany"   # TODO: real board slugs
+
+  - key: lever_example
+    adapter: lever
+    name: "Lever (example company)"
+    category: jobs
+    access_method: ats_json
+    enabled: true
+    config:
+      company: "examplecompany"
+
+  # --- Official APIs ---
+  - key: github_gsoc
+    adapter: github
+    name: "GitHub OSS / GSoC"
+    category: gsoc
+    access_method: api
+    enabled: true
+    config:
+      queries: ["label:\"good first issue\" language:python stars:>200"]
+      labels: ["good first issue", "help wanted"]
+
+  - key: kaggle_competitions
+    adapter: kaggle
+    name: "Kaggle Competitions"
+    category: hackathon
+    access_method: api
+    enabled: true
+    config:
+      category: "featured"
+
+  - key: arxiv_cs
+    adapter: arxiv
+    name: "arXiv (CS)"
+    category: research
+    access_method: api
+    enabled: true
+    config:
+      categories: ["cs.LG", "cs.CL", "cs.CV"]
+      max_results: 50
+
+  # --- RSS (fellowships, CFPs, lab news) ---
+  - key: wikicfp_example
+    adapter: rss_generic
+    name: "WikiCFP (example track)"
+    category: conference
+    access_method: rss
+    enabled: false   # enable once a feed_url is set
+    config:
+      feed_url: "http://www.wikicfp.com/cfp/rss?cat=..."
+      type: conference
+
+  # --- Web discovery (last structured rung before scraping) ---
+  - key: web_discovery
+    adapter: search_tavily
+    name: "Web discovery (search)"
+    category: mixed
+    access_method: search
+    enabled: false   # cost-bearing; enable deliberately
+    config:
+      queries: ["summer research internship machine learning {year}"]
+      type: research
+
+# TODO(phase-1+): expand to the full 30+ source set from docs/sourcing.md
+# (Ashby, USAJobs, Adzuna, Remotive, RemoteOK, HN Algolia, grants.gov, OpenAlex,
+#  Devpost, MLH, university lab feeds, scholarship portals, sitemap-generic ...).
