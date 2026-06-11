@@ -4,7 +4,7 @@
 # separate Fly resources; their URLs arrive as secrets.
 
 app = "opportunitypulse"
-primary_region = "iad"
+primary_region = "bom"
 
 [build]
   dockerfile = "infra/docker/backend.Dockerfile"
