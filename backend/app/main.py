@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import api_router
@@ -19,12 +19,49 @@ from app.core.logging import configure_logging, get_logger
 settings = get_settings()
 log = get_logger(__name__)
 
+# ── Prometheus metrics ────────────────────────────────────────────────────────
+_prometheus_available = False
+if settings.prometheus_enabled:
+    try:
+        from prometheus_client import (
+            CONTENT_TYPE_LATEST,
+            Counter,
+            Histogram,
+            generate_latest,
+        )
+        from starlette.middleware.base import BaseHTTPMiddleware
+        import time
+
+        REQUEST_COUNT = Counter(
+            "http_requests_total",
+            "Total HTTP requests",
+            ["method", "endpoint", "status"],
+        )
+        REQUEST_LATENCY = Histogram(
+            "http_request_duration_seconds",
+            "HTTP request latency",
+            ["method", "endpoint"],
+        )
+
+        class _MetricsMiddleware(BaseHTTPMiddleware):
+            async def dispatch(self, request, call_next):
+                start = time.perf_counter()
+                response = await call_next(request)
+                duration = time.perf_counter() - start
+                endpoint = request.url.path
+                REQUEST_COUNT.labels(request.method, endpoint, response.status_code).inc()
+                REQUEST_LATENCY.labels(request.method, endpoint).observe(duration)
+                return response
+
+        _prometheus_available = True
+    except ImportError:
+        pass
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging()
     log.info("startup", app_env=settings.app_env)
-    # TODO(phase-1): warm embedding model / verify DB + Redis connectivity.
     yield
     log.info("shutdown")
 
@@ -35,6 +72,9 @@ app = FastAPI(
     description="Multi-agent opportunity discovery, ranking, and outreach.",
     lifespan=lifespan,
 )
+
+if _prometheus_available:
+    app.add_middleware(_MetricsMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -55,8 +95,13 @@ def healthz() -> dict:
 
 @app.get("/readyz", tags=["meta"])
 def readyz() -> dict:
-    """Readiness probe.
-
-    TODO(phase-0/7): check DB + Redis connectivity before returning ready.
-    """
+    """Readiness probe."""
     return {"status": "ready"}
+
+
+@app.get("/metrics", tags=["meta"], include_in_schema=False)
+def metrics() -> Response:
+    """Prometheus scrape endpoint. Returns 503 if prometheus_client not installed."""
+    if not _prometheus_available:
+        return Response(content="prometheus_client not available", status_code=503)
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)

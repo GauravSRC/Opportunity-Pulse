@@ -1,34 +1,30 @@
-"""Polymorphic embedding store (pgvector).
+"""Polymorphic embedding store.
 
 One row per (owner_type, owner_id, intent?) vector. Profiles may have several
-rows (one per intent) for intent-aware retrieval. An HNSW cosine index is added
-in the migration.
+rows (one per intent) for intent-aware retrieval. Vectors use pgvector on
+Postgres (HNSW cosine index added in the migration) and a JSON list on SQLite.
 """
 
 from __future__ import annotations
 
 import uuid
 
-from pgvector.sqlalchemy import Vector
-from sqlalchemy import Integer, String
-from sqlalchemy.dialects.postgresql import ENUM, UUID
+from sqlalchemy import Enum, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, UUIDMixin
+from app.db.types import DEFAULT_EMBEDDING_DIM, GUID, vector_type
 from app.models.enums import EmbeddingOwner
-
-# Default embedding dimensionality (BAAI/bge-small-en-v1.5 -> 384).
-DEFAULT_EMBEDDING_DIM = 384
 
 
 class Embedding(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "embeddings"
 
     owner_type: Mapped[EmbeddingOwner] = mapped_column(
-        ENUM(EmbeddingOwner, name="embedding_owner"), index=True
+        Enum(EmbeddingOwner, native_enum=False), index=True
     )
-    owner_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    owner_id: Mapped[uuid.UUID] = mapped_column(GUID(), index=True)
     intent: Mapped[str | None] = mapped_column(String(32), nullable=True)
     model: Mapped[str] = mapped_column(String(128))
     dim: Mapped[int] = mapped_column(Integer, default=DEFAULT_EMBEDDING_DIM)
-    vector: Mapped[list[float]] = mapped_column(Vector(DEFAULT_EMBEDDING_DIM))
+    vector: Mapped[list[float]] = mapped_column(vector_type(DEFAULT_EMBEDDING_DIM))

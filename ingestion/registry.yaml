@@ -7,6 +7,26 @@
 # See docs/sourcing.md for the full 30+ category plan.
 
 sources:
+  # --- Offline demo source (reproducible; used by scripts/demo_seed.py) ---
+  - key: demo_fixture
+    adapter: demo_fixture
+    name: "Demo opportunities (offline fixture)"
+    category: mixed
+    access_method: api
+    enabled: true
+    config: {}
+
+  # --- Public remote-jobs API (no key needed) ---
+  - key: remotive
+    adapter: remotive
+    name: "Remotive (remote jobs)"
+    category: jobs
+    access_method: api
+    enabled: false   # enable to pull live remote jobs
+    config:
+      limit: 50
+      category: "software-dev"
+
   # --- ATS JSON (most robust, ToS-friendly) ---
   - key: greenhouse_example
     adapter: greenhouse

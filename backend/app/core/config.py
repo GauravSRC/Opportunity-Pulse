@@ -10,7 +10,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     ollama_model: str = "llama3.1"
 
     # Embeddings / rerank
-    embedding_provider: Literal["local", "openai", "hosted"] = "local"
+    embedding_provider: Literal["hashing", "local", "openai", "hosted"] = "hashing"
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     rerank_enabled: bool = True
@@ -67,6 +67,22 @@ class Settings(BaseSettings):
 
     # Frontend origin (CORS)
     web_origin: str = "http://localhost:3000"
+
+    @field_validator("database_url")
+    @classmethod
+    def _normalize_database_url(cls, v: str) -> str:
+        """Coerce managed-Postgres URLs to the psycopg3 driver.
+
+        Neon, Render, Supabase, Railway, etc. all hand out ``postgres://`` or
+        ``postgresql://`` URLs. The app's SQLAlchemy engine uses the psycopg3
+        driver, which requires the ``postgresql+psycopg://`` scheme. This rewrite
+        is a no-op when the scheme is already correct (or for SQLite in tests).
+        """
+        if v.startswith("postgres://"):
+            return "postgresql+psycopg://" + v[len("postgres://") :]
+        if v.startswith("postgresql://"):
+            return "postgresql+psycopg://" + v[len("postgresql://") :]
+        return v
 
 
 @lru_cache

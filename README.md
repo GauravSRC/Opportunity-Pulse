@@ -18,14 +18,6 @@ fellowship, a team pitch for a hackathon.
 
 It is designed to feel like a real product students use every week — not a demo.
 
-## Why it exists
-
-Finding opportunities is a scattered, manual, multi-hour weekly chore. Listings
-are duplicated across sites, deadlines hide in prose ("rolling until filled"),
-and writing outreach from a blank page is exhausting. OpportunityPulse collapses
-that into one personalized, deadline-aware, explainable feed with action-ready
-drafts.
-
 ## Key features
 
 - **Semantic matching** against your profile using embeddings (not keyword-only).
@@ -40,23 +32,175 @@ drafts.
   recency, and urgency components.
 - **Alerts & reminders** for high-fit, soon-to-close opportunities.
 - **Chrome extension** that shows your live match score on a listing page.
+- **Prometheus `/metrics`** endpoint for observability.
 
 ## Architecture at a glance
 
-`Next.js web + Chrome extension` -> `FastAPI (sync reads)` -> `Redis queue` ->
-`Arq workers running LangGraph agent pipelines` -> `PostgreSQL + pgvector`,
-with `LangSmith + Prometheus` for observability. See
-[`ARCHITECTURE.md`](ARCHITECTURE.md).
+```
+Next.js (web) + Chrome MV3 (extension)
+        ↓
+FastAPI sync API  (http://localhost:8000)
+        ↓ enqueue
+Redis queue
+        ↓
+Arq workers  (cron: ingest every 30 min, dedup/decay hourly, alerts every 15 min)
+        ↓
+PostgreSQL + pgvector
+```
 
-## Quick start (Phase 0 scaffold)
+LangSmith + Prometheus + structured logs for observability.
+See [`ARCHITECTURE.md`](ARCHITECTURE.md).
+
+## Quick start (fresh clone)
+
+### Prerequisites
+
+- Python 3.11+
+- Node.js 18+
+- Docker + Docker Compose
+
+### 1 — Clone and configure
 
 ```bash
-cp .env.example .env          # fill in keys (Anthropic/OpenAI/search/GitHub/Kaggle)
-docker compose up -d db redis # Postgres+pgvector and Redis
-docker compose config         # validate the full compose file
-# Backend (later phases): cd backend && uvicorn app.main:app --reload
-# Web (later phases):      cd web && npm install && npm run dev
+git clone <repo-url> opportunity_pulse
+cd opportunity_pulse
+cp .env.example .env
+# Edit .env: set ANTHROPIC_API_KEY (or OPENAI_API_KEY), leave the rest as defaults for local dev
 ```
+
+### 2 — Install Python dependencies
+
+```bash
+pip install -e ".[dev]"
+```
+
+### 3 — Start infrastructure (Postgres + pgvector + Redis)
+
+```bash
+docker compose up -d db redis
+```
+
+### 4 — Apply DB migrations
+
+```bash
+cd backend
+alembic upgrade head
+cd ..
+```
+
+### 5 — Run tests (SQLite in-memory, no Postgres needed)
+
+```bash
+python -m pytest backend/tests/ tests/ -q
+# Expected: 41 passed
+```
+
+### 6 — Seed demo data
+
+```bash
+python scripts/demo_seed.py
+```
+
+### 7 — Start the backend API
+
+```bash
+cd backend
+uvicorn app.main:app --reload
+# API docs: http://localhost:8000/docs
+# Metrics:  http://localhost:8000/metrics
+```
+
+### 8 — Start the web frontend
+
+```bash
+cd web
+npm install
+npm run dev
+# Open: http://localhost:3000
+```
+
+### 9 — Start the Arq worker (optional, for background pipeline)
+
+```bash
+arq worker.arq_app.WorkerSettings
+```
+
+### 10 — Load the Chrome extension (optional)
+
+1. Open `chrome://extensions`
+2. Enable "Developer mode"
+3. Click "Load unpacked" → select the `extension/` folder
+
+---
+
+## Full-stack with Docker Compose
+
+```bash
+docker compose up --build
+# API:      http://localhost:8000/docs
+# Web:      http://localhost:3000
+# Metrics:  http://localhost:8000/metrics
+```
+
+---
+
+## Deploying to production (Fly.io)
+
+The repo ships with a `fly.toml` in `infra/deploy/`. Steps:
+
+```bash
+# Install flyctl: https://fly.io/docs/hands-on/install-flyctl/
+fly auth login
+
+# Create the app (first time only)
+fly launch --no-deploy --config infra/deploy/fly.toml
+
+# Provision a managed Postgres (Fly Postgres)
+fly postgres create --name opportunitypulse-db
+fly postgres attach opportunitypulse-db
+
+# Set secrets
+fly secrets set ANTHROPIC_API_KEY=sk-ant-... REDIS_URL=redis://...
+
+# Deploy
+fly deploy --config infra/deploy/fly.toml
+
+# Your live URL will be:
+#   https://<app-name>.fly.dev
+# Check: fly status --config infra/deploy/fly.toml
+```
+
+The web frontend can be deployed separately to Vercel:
+
+```bash
+cd web
+npx vercel --prod
+# Vercel will give you: https://<project>.vercel.app
+```
+
+Set `NEXT_PUBLIC_API_URL=https://<app-name>.fly.dev` in your Vercel environment
+variables so the frontend points at the deployed backend.
+
+---
+
+## Key API endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/profiles` | Create user + profile |
+| `GET` | `/opportunities` | Ranked feed (q, type, remote, user_id) |
+| `GET` | `/opportunities/{id}/explanation` | Score breakdown |
+| `POST` | `/opportunities/{id}/outreach` | Generate type-routed draft |
+| `POST` | `/deadlines/extract` | Ad hoc deadline extraction |
+| `POST` | `/feedback` | Submit feedback signal |
+| `GET` | `/admin/health` | Source health + pipeline status |
+| `POST` | `/admin/rank/{user_id}` | Recompute scores for a user |
+| `GET` | `/metrics` | Prometheus scrape endpoint |
+| `GET` | `/healthz` | Liveness probe |
+
+Full interactive docs at `http://localhost:8000/docs`.
+
+---
 
 ## Documentation
 
@@ -65,12 +209,6 @@ docker compose config         # validate the full compose file
 - [`CLAUDE.md`](CLAUDE.md) — contributor/agent guide and conventions.
 - [`docs/`](docs/) — deep-dives: data model, ML design, agents, sourcing, API,
   evaluation, roadmap, interview framing.
-
-## Status & roadmap
-
-Phase 0 (scaffold) is in place. Phases 1–7 (MVP -> ranking+dedup -> deadline
-intelligence -> outreach agent -> extension -> learning loop -> production
-hardening) are tracked in [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Legal / ethical
 

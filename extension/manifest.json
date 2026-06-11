@@ -5,9 +5,12 @@
   "description": "Shows your live match score on opportunity listing pages.",
   "permissions": ["activeTab", "storage", "scripting"],
   "host_permissions": [
+    "http://localhost:8000/*",
     "https://boards.greenhouse.io/*",
     "https://jobs.lever.co/*",
-    "https://*.github.io/*"
+    "https://remotive.com/*",
+    "https://www.linkedin.com/jobs/*",
+    "https://wellfound.com/*"
   ],
   "action": {
     "default_popup": "popup/popup.html",
@@ -21,7 +24,9 @@
     {
       "matches": [
         "https://boards.greenhouse.io/*",
-        "https://jobs.lever.co/*"
+        "https://jobs.lever.co/*",
+        "https://remotive.com/remote-jobs/*",
+        "https://wellfound.com/jobs/*"
       ],
       "js": ["content/content.js"],
       "run_at": "document_idle"

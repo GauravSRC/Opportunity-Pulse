@@ -1,20 +1,35 @@
-"""Deadline extraction fallback ladder: rules -> ner -> llm, with confidence.
+"""Deadline extraction fallback ladder: rules -> relative -> ner -> llm.
 
 The product never blocks on the LLM: if it is unavailable, extraction stops at
-the best rules/NER result (or 'unknown'). See docs/ml-design.md section 7.
+the best deterministic result (or 'unknown'). Confidence below REVIEW_THRESHOLD
+routes the deadline to the human review queue. See docs/ml-design.md section 7.
 """
 
 from __future__ import annotations
 
-from deadline_parser.confidence import ExtractionResult, REVIEW_THRESHOLD
+from deadline_parser import llm_fallback, ner, relative, rules
+from deadline_parser.confidence import REVIEW_THRESHOLD, ExtractionResult
 
 __all__ = ["extract", "ExtractionResult", "REVIEW_THRESHOLD"]
 
 
-def extract(text: str) -> ExtractionResult:
-    """Run the full ladder and return the best result with confidence.
+def extract(text: str, *, use_llm: bool = True) -> ExtractionResult:
+    """Run the ladder and return the best result, by confidence.
 
-    TODO(phase-3): rules.parse() -> if low, ner.parse() -> if low,
-    llm_fallback.parse(); set needs_review when confidence < REVIEW_THRESHOLD.
+    Stops early once a result clears REVIEW_THRESHOLD. ``use_llm=False`` keeps it
+    fully deterministic (used in tests and offline demos).
     """
-    raise NotImplementedError("extract")
+    best = ExtractionResult(kind="unknown", confidence=0.0, extractor="rule")
+
+    for rung in (rules.parse, relative.parse, ner.parse):
+        result = rung(text)
+        if result.confidence > best.confidence:
+            best = result
+        if best.confidence >= REVIEW_THRESHOLD and best.kind != "unknown":
+            return best
+
+    if use_llm and best.confidence < REVIEW_THRESHOLD:
+        result = llm_fallback.parse(text)
+        if result.confidence > best.confidence:
+            best = result
+    return best

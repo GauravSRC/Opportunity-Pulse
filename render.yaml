@@ -1,0 +1,67 @@
+# Render Blueprint for OpportunityPulse.
+#
+#   Backend API  -> Docker web service  (free plan OK)
+#   Arq worker   -> Docker background worker (paid: background workers are not
+#                   free on Render — omit this service for a free-only deploy and
+#                   trigger ingestion/ranking via the API endpoints instead)
+#
+# Postgres and Redis are EXTERNAL and provider-agnostic (recommended: Neon for
+# Postgres — persistent free tier with pgvector; Upstash for Redis — free tier).
+# Set DATABASE_URL and REDIS_URL (and secrets) in the Render dashboard; they are
+# marked `sync: false` so the blueprint never carries credentials.
+#
+# Deploy:  Render Dashboard -> New -> Blueprint -> point at this repo.
+# Docs:    docs/deploy-render-vercel.md
+
+services:
+  - type: web
+    name: opportunity-pulse-api
+    runtime: docker
+    plan: free
+    dockerfilePath: infra/docker/backend.Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_SECRET
+        generateValue: true        # Render generates a strong random secret
+      - key: PROMETHEUS_ENABLED
+        value: "true"
+      - key: EMBEDDING_PROVIDER
+        value: hashing             # zero-dependency; keeps the free 512MB runtime lean
+      - key: RERANK_ENABLED
+        value: "false"             # skip the cross-encoder on the free tier
+      - key: LLM_PROVIDER
+        value: anthropic
+      - key: DATABASE_URL
+        sync: false                # set to your Neon/Render Postgres URL
+      - key: REDIS_URL
+        sync: false                # set to your Upstash rediss:// URL
+      - key: WEB_ORIGIN
+        sync: false                # set to your Vercel URL for CORS
+      - key: ANTHROPIC_API_KEY
+        sync: false                # optional; LLM stages degrade gracefully if unset
+
+  # Optional — requires a paid plan. Delete this block for a free-only deploy.
+  - type: worker
+    name: opportunity-pulse-worker
+    runtime: docker
+    plan: starter
+    dockerfilePath: infra/docker/worker.Dockerfile
+    dockerContext: .
+    autoDeploy: true
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: EMBEDDING_PROVIDER
+        value: hashing
+      - key: LLM_PROVIDER
+        value: anthropic
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
