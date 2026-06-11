@@ -7,11 +7,11 @@ Polite: arXiv asks for <= 1 request / 3s.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
-
 from app.core.config import get_settings
+
 from ingestion.normalize import clean_text, extract_skills
 from ingestion.sources.base import AccessMethod, NormalizedListing, RawRecord, SourceAdapter
 
@@ -41,7 +41,7 @@ class ArxivAdapter(SourceAdapter):
             resp = await client.get(_BASE, params=params)
             resp.raise_for_status()
             feed = feedparser.parse(resp.text)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return [
             RawRecord(external_id=e.get("id", ""), url=e.get("link", ""), payload=dict(e), fetched_at=now)
             for e in feed.entries
@@ -56,7 +56,7 @@ class ArxivAdapter(SourceAdapter):
         posted = None
         if e.get("published_parsed"):
             try:
-                posted = datetime(*e["published_parsed"][:6], tzinfo=timezone.utc)
+                posted = datetime(*e["published_parsed"][:6], tzinfo=UTC)
             except (TypeError, ValueError):
                 posted = None
         return NormalizedListing(

@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
-import sys
+import contextlib
 import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "backend"))
 
 
 async def run_ranking(ctx: dict, user_id: str | None = None, intent: str | None = None) -> dict:
     """Retrieve → score → explain → persist RankScore rows for user(s)."""
+    import uuid
+
     from app.db.session import SessionLocal
     from app.models.user import User
     from app.services import ranking_service
     from sqlalchemy import select
-    import uuid
 
     db = SessionLocal()
     try:
@@ -26,10 +29,8 @@ async def run_ranking(ctx: dict, user_id: str | None = None, intent: str | None 
         users = db.execute(select(User)).scalars().all()
         total = 0
         for user in users:
-            try:
+            with contextlib.suppress(Exception):
                 total += ranking_service.rank_user(db, user.id)
-            except Exception:
-                pass
         return {"users": len(users), "scored": total}
     finally:
         db.close()

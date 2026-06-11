@@ -34,7 +34,7 @@ class User(UUIDMixin, TimestampMixin, Base):
     )
     settings_json: Mapped[dict] = mapped_column(json_type(), default=dict)
 
-    profile: Mapped["UserProfile"] = relationship(back_populates="user", uselist=False)
+    profile: Mapped[UserProfile] = relationship(back_populates="user", uselist=False)
 
 
 class Skill(UUIDMixin, TimestampMixin, Base):

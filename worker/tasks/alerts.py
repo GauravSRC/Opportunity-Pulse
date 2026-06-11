@@ -7,20 +7,23 @@ only generates the records.
 
 from __future__ import annotations
 
-import sys
 import os
+import sys
+from datetime import UTC
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "backend"))
 
 
 async def run_alerts(ctx: dict) -> dict:
     """Eval rules → create Alert rows for high-fit opportunities near their deadline."""
+    from datetime import datetime, timedelta
+
     from app.db.session import SessionLocal
-    from app.models.ranking import RankScore
-    from app.models.deadline import Deadline
     from app.models.alert import Alert
+    from app.models.deadline import Deadline
     from app.models.enums import AlertChannel, AlertStatus, DeadlineKind
-    from sqlalchemy import select, and_
-    from datetime import datetime, timezone, timedelta
+    from app.models.ranking import RankScore
+    from sqlalchemy import and_, select
 
     SCORE_THRESHOLD = 0.65
     DAYS_WINDOW = 7
@@ -28,7 +31,7 @@ async def run_alerts(ctx: dict) -> dict:
     db = SessionLocal()
     created = 0
     try:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         cutoff = now + timedelta(days=DAYS_WINDOW)
 
         # Find high-scoring listings

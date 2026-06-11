@@ -10,7 +10,7 @@ Examples:
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from deadline_parser.confidence import ExtractionResult
 
@@ -50,7 +50,7 @@ def _end_of(period: str, ref: datetime) -> datetime:
 
 
 def parse(text: str, reference: datetime | None = None) -> ExtractionResult:
-    ref = reference or datetime.now(timezone.utc)
+    ref = reference or datetime.now(UTC)
     text = text or ""
 
     m = _BEFORE_ANCHOR.search(text)

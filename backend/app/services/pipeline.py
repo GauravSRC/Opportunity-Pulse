@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -21,11 +21,11 @@ from app.models.enums import DeadlineKind, EmbeddingOwner, Extractor, Opportunit
 from app.models.listing import DedupCluster, NormalizedListing, RawListing
 from app.models.source import OpportunitySource
 from app.services.embeddings import store_embedding
+from deadline_parser import extract as extract_deadline
 from dedup.blocker import candidate_pairs
 from dedup.cluster import cluster as cluster_pairs
 from dedup.merge import choose_canonical, merge_metadata
 from dedup.similarity import is_duplicate, pair_score
-from deadline_parser import extract as extract_deadline
 from ingestion.sources import load_adapter
 from ranking.embedder import embed_listing
 
@@ -66,7 +66,7 @@ async def run_source(db: Session, source: OpportunitySource, *, use_llm: bool = 
                 source_id=source.id,
                 external_id=str(rec.external_id),
                 url=rec.url,
-                fetched_at=rec.fetched_at or datetime.now(timezone.utc),
+                fetched_at=rec.fetched_at or datetime.now(UTC),
                 payload_json=rec.payload,
                 content_fingerprint=_fingerprint(rec.payload),
                 status=RawStatus.new,
@@ -106,7 +106,7 @@ async def run_source(db: Session, source: OpportunitySource, *, use_llm: bool = 
             log.warning("ingest.parse_failed", source=source.key, error=str(exc))
             errors += 1
 
-    source.last_run_at = datetime.now(timezone.utc)
+    source.last_run_at = datetime.now(UTC)
     _record_health(source, ok=True, created=created, errors=errors)
     db.commit()
     return {"source": source.key, "created": created, "skipped": skipped, "errors": errors}
@@ -151,7 +151,7 @@ def _record_health(source: OpportunitySource, *, ok: bool, created: int = 0, err
             "last_ok": ok,
             "last_created": created,
             "last_errors": errors,
-            "last_run": datetime.now(timezone.utc).isoformat(),
+            "last_run": datetime.now(UTC).isoformat(),
             "consecutive_failures": 0 if ok else health.get("consecutive_failures", 0) + 1,
         }
     )

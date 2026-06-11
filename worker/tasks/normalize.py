@@ -6,16 +6,17 @@ re-queues any raw listings that were left un-normalized due to transient errors.
 
 from __future__ import annotations
 
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "backend"))
 
 
 async def run_normalize(ctx: dict, raw_ids: list[str] | None = None) -> dict:
     """Mark un-normalized raw listings as error so they surface in health dashboard."""
     from app.db.session import SessionLocal
-    from app.models.listing import RawListing
     from app.models.enums import RawStatus
+    from app.models.listing import RawListing
     from sqlalchemy import select
 
     db = SessionLocal()

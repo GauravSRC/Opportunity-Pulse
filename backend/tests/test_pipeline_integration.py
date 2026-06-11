@@ -12,7 +12,6 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -193,8 +192,8 @@ class TestDeadlineExtraction:
 
 class TestOutreach:
     def test_generate_cover_letter_for_job(self, db: Session) -> None:
-        from app.models.listing import NormalizedListing
         from app.models.enums import OpportunityType
+        from app.models.listing import NormalizedListing
         from app.services.outreach_service import generate
         from sqlalchemy import select
 
@@ -218,8 +217,8 @@ class TestOutreach:
         assert len(artifact.body) > 10
 
     def test_generate_cold_email_for_research(self, db: Session) -> None:
-        from app.models.listing import NormalizedListing
         from app.models.enums import OpportunityType
+        from app.models.listing import NormalizedListing
         from app.services.outreach_service import generate
         from sqlalchemy import select
 
@@ -243,9 +242,9 @@ class TestOutreach:
 
 class TestFeedback:
     def test_submit_feedback(self, db: Session) -> None:
+        from app.models.enums import FeedbackSignal
         from app.models.listing import NormalizedListing
         from app.services.feedback_service import submit
-        from app.models.enums import FeedbackSignal
         from sqlalchemy import select
 
         _sync_sources(db)

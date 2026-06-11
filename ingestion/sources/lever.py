@@ -6,11 +6,11 @@ config: {"company": "<slug>"}.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
-
 from app.core.config import get_settings
+
 from ingestion.normalize import clean_text, extract_skills
 from ingestion.sources.base import AccessMethod, NormalizedListing, RawRecord, SourceAdapter
 
@@ -31,7 +31,7 @@ class LeverAdapter(SourceAdapter):
             resp = await client.get(_BASE.format(company=company))
             resp.raise_for_status()
             postings = resp.json()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return [
             RawRecord(external_id=str(p["id"]), url=p.get("hostedUrl", ""), payload=p, fetched_at=now)
             for p in postings
@@ -45,7 +45,7 @@ class LeverAdapter(SourceAdapter):
         posted = None
         if p.get("createdAt"):
             try:
-                posted = datetime.fromtimestamp(int(p["createdAt"]) / 1000, tz=timezone.utc)
+                posted = datetime.fromtimestamp(int(p["createdAt"]) / 1000, tz=UTC)
             except (ValueError, TypeError):
                 posted = None
         location = (p.get("categories") or {}).get("location")

@@ -10,9 +10,8 @@ from sqlalchemy.orm import Session
 from app.models.enums import EmbeddingOwner
 from app.models.user import Skill, User, UserProfile
 from app.services.embeddings import store_embedding
-from ranking.embedder import embed_profile
-
 from ingestion.normalize import extract_skills
+from ranking.embedder import embed_profile
 
 
 def profile_to_dict(profile: UserProfile, user: User | None = None) -> dict:

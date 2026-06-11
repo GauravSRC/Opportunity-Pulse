@@ -14,7 +14,7 @@ def cosine(a: list[float], b: list[float]) -> float:
     """Cosine similarity in [-1, 1]; vectors may or may not be pre-normalized."""
     if not a or not b or len(a) != len(b):
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     na = math.sqrt(sum(x * x for x in a)) or 1.0
     nb = math.sqrt(sum(y * y for y in b)) or 1.0
     return dot / (na * nb)

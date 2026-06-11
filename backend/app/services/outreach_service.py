@@ -6,7 +6,8 @@ import uuid
 
 from sqlalchemy.orm import Session
 
-from app.models.enums import ArtifactStatus, ArtifactType as ModelArtifactType
+from app.models.enums import ArtifactStatus
+from app.models.enums import ArtifactType as ModelArtifactType
 from app.models.listing import NormalizedListing
 from app.models.outreach import OutreachArtifact
 from app.models.user import UserProfile

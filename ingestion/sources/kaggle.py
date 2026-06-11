@@ -7,7 +7,7 @@ deadline phrase so the extractor can pick it up.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from ingestion.normalize import extract_skills
 from ingestion.sources.base import AccessMethod, NormalizedListing, RawRecord, SourceAdapter
@@ -24,7 +24,7 @@ class KaggleAdapter(SourceAdapter):
         api = KaggleApi()
         api.authenticate()
         comps = api.competitions_list(category=self.config.get("category", "featured"))
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         records = []
         for c in comps:
             payload = {

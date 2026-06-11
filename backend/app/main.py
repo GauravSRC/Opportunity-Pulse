@@ -23,6 +23,8 @@ log = get_logger(__name__)
 _prometheus_available = False
 if settings.prometheus_enabled:
     try:
+        import time
+
         from prometheus_client import (
             CONTENT_TYPE_LATEST,
             Counter,
@@ -30,7 +32,6 @@ if settings.prometheus_enabled:
             generate_latest,
         )
         from starlette.middleware.base import BaseHTTPMiddleware
-        import time
 
         REQUEST_COUNT = Counter(
             "http_requests_total",

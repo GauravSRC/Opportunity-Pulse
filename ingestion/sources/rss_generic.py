@@ -6,7 +6,7 @@ Preferred rung above scraping for fellowship/CFP/lab-news feeds.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from ingestion.normalize import clean_text, extract_skills
 from ingestion.sources.base import AccessMethod, NormalizedListing, RawRecord, SourceAdapter
@@ -22,7 +22,7 @@ class RssGenericAdapter(SourceAdapter):
 
         feed_url = self.config["feed_url"]
         parsed = feedparser.parse(feed_url)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         records = []
         for e in parsed.entries:
             ext = e.get("id") or e.get("link") or e.get("title", "")
@@ -40,7 +40,7 @@ class RssGenericAdapter(SourceAdapter):
         posted = None
         if e.get("published_parsed"):
             try:
-                posted = datetime(*e["published_parsed"][:6], tzinfo=timezone.utc)
+                posted = datetime(*e["published_parsed"][:6], tzinfo=UTC)
             except (TypeError, ValueError):
                 posted = None
         return NormalizedListing(

@@ -8,7 +8,7 @@ feedback loop. Every score keeps its component breakdown for explainability.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -66,7 +66,7 @@ def rank_user(db: Session, user_id: uuid.UUID) -> int:
     pvecs = _profile_vectors(db, profile.id)
     profile_skills = [s.canonical_name for s in profile.skills]
     weights = get_weights(db, user)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     listings = list(
         db.execute(select(NormalizedListing).where(NormalizedListing.is_canonical.is_(True))).scalars()

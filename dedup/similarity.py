@@ -26,11 +26,9 @@ def pair_score(a: dict, b: dict, vec_a: list[float] | None = None, vec_b: list[f
     fuzzy_org = fuzz.token_set_ratio(a.get("org", "") or "", b.get("org", "") or "") / 100.0
     cos = cosine(vec_a, vec_b) if vec_a and vec_b else 0.0
 
-    if url_match:
-        combined = 1.0
-    else:
-        # Weighted blend; title dominates, org and embedding refine.
-        combined = 0.55 * fuzzy_title + 0.20 * fuzzy_org + 0.25 * max(0.0, cos)
+    # URL match is decisive; otherwise a weighted blend (title dominates, org
+    # and embedding refine).
+    combined = 1.0 if url_match else 0.55 * fuzzy_title + 0.20 * fuzzy_org + 0.25 * max(0.0, cos)
     return {
         "url_match": url_match,
         "fuzzy_title": round(fuzzy_title, 4),

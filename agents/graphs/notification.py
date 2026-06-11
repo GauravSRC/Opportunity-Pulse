@@ -8,8 +8,6 @@ TODO(phase-3): implement over agents.state.NotificationState.
 
 from __future__ import annotations
 
-from agents.state import NotificationState
-
 
 def build_notification_graph():
     """Return a compiled LangGraph for notifications. TODO(phase-3)."""

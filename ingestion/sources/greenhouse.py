@@ -6,11 +6,11 @@ Structured + ToS-friendly; no scraping. config: {"slug": "<company>"}.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
-
 from app.core.config import get_settings
+
 from ingestion.normalize import clean_text, extract_skills
 from ingestion.sources.base import AccessMethod, NormalizedListing, RawRecord, SourceAdapter
 
@@ -31,7 +31,7 @@ class GreenhouseAdapter(SourceAdapter):
             resp = await client.get(_BASE.format(slug=slug))
             resp.raise_for_status()
             jobs = resp.json().get("jobs", [])
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return [
             RawRecord(external_id=str(j["id"]), url=j.get("absolute_url", ""), payload=j, fetched_at=now)
             for j in jobs

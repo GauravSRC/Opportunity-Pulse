@@ -7,7 +7,7 @@ style phrases map to kind=rolling. Absolute dates are parsed from common formats
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from deadline_parser.confidence import ExtractionResult
 
@@ -39,7 +39,7 @@ def _parse_date(s: str) -> datetime | None:
         return None
     dt = dateparser.parse(s, settings={"RETURN_AS_TIMEZONE_AWARE": True, "PREFER_DATES_FROM": "future"})
     if dt and dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt
 
 

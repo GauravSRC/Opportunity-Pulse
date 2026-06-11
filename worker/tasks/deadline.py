@@ -2,20 +2,23 @@
 
 from __future__ import annotations
 
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "backend"))
 
 
 async def run_deadline(ctx: dict, listing_ids: list[str] | None = None) -> dict:
     """Extract deadlines for listings that don't have one yet."""
+    import uuid
+
     from app.db.session import SessionLocal
-    from app.models.listing import NormalizedListing
     from app.models.deadline import Deadline
     from app.models.enums import DeadlineKind, Extractor
+    from app.models.listing import NormalizedListing
+    from sqlalchemy import exists, select
+
     from deadline_parser import extract as extract_deadline
-    from sqlalchemy import select, exists
-    import uuid
 
     db = SessionLocal()
     processed = 0

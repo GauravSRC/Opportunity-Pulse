@@ -9,8 +9,6 @@ TODO(phase-6): implement over agents.state.FeedbackState.
 
 from __future__ import annotations
 
-from agents.state import FeedbackState
-
 
 def build_feedback_graph():
     """Return a compiled LangGraph for the learning loop. TODO(phase-6)."""

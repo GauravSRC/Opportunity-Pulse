@@ -7,8 +7,9 @@ Always cheap to call and never raises.
 
 from __future__ import annotations
 
+import contextlib
 import re
-from datetime import timezone
+from datetime import UTC
 
 from deadline_parser.confidence import ExtractionResult
 
@@ -20,10 +21,9 @@ _LOOSE_DATE = re.compile(
 
 
 def parse(text: str) -> ExtractionResult:
-    try:  # optional spaCy path
-        import spacy  # noqa: F401  (presence check only; model load is heavy)
-    except Exception:
-        spacy = None  # type: ignore
+    # Optional spaCy path (presence check only; model load is heavy).
+    with contextlib.suppress(Exception):
+        import spacy  # noqa: F401
 
     m = _LOOSE_DATE.search(text or "")
     if not m:
@@ -39,7 +39,7 @@ def parse(text: str) -> ExtractionResult:
         dt = None
     if dt:
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
         # Lower confidence than the rules rung: looser match, may lack a year.
         conf = 0.6 if re.search(r"\d{4}", m.group(0)) else 0.45
         return ExtractionResult(

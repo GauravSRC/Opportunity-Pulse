@@ -49,8 +49,8 @@ def gather_context(listing: dict, profile: dict, artifact_type: ArtifactType) ->
         "url": listing.get("url"),
         "description_excerpt": (listing.get("description") or "")[:600],
         "matched_skills": sorted(
-            set(s.lower() for s in (profile.get("skills") or []))
-            & set(s.lower() for s in (listing.get("skills") or []))
+            {s.lower() for s in (profile.get("skills") or [])}
+            & {s.lower() for s in (listing.get("skills") or [])}
         ),
         "user_headline": profile.get("headline"),
         "user_name": profile.get("name") or profile.get("headline") or "Your Name",

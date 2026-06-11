@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import pathlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from ingestion.normalize import clean_text, extract_skills
 from ingestion.sources.base import AccessMethod, NormalizedListing, RawRecord, SourceAdapter
@@ -23,7 +23,7 @@ def _parse_dt(value: str | None) -> datetime | None:
         return None
     try:
         dt = datetime.fromisoformat(value)
-        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
     except ValueError:
         return None
 
@@ -36,7 +36,7 @@ class DemoFixtureAdapter(SourceAdapter):
     async def fetch(self, since: datetime | None = None) -> list[RawRecord]:
         path = pathlib.Path(self.config.get("path") or _FIXTURE)
         records = json.loads(path.read_text(encoding="utf-8"))
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return [
             RawRecord(external_id=r["external_id"], url=r["url"], payload=r, fetched_at=now)
             for r in records

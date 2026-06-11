@@ -6,11 +6,11 @@ Each matching issue becomes a gsoc/research-flavored opportunity.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
-
 from app.core.config import get_settings
+
 from ingestion.normalize import clean_text, extract_skills
 from ingestion.sources.base import AccessMethod, NormalizedListing, RawRecord, SourceAdapter
 
@@ -27,7 +27,7 @@ class GitHubAdapter(SourceAdapter):
         headers = {"User-Agent": s.crawler_user_agent, "Accept": "application/vnd.github+json"}
         if s.github_token:
             headers["Authorization"] = f"Bearer {s.github_token}"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         records: list[RawRecord] = []
         async with httpx.AsyncClient(timeout=s.http_timeout_seconds, headers=headers) as client:
             for q in self.config.get("queries", []):

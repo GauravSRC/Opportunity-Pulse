@@ -6,7 +6,7 @@ role-based dependencies for admin routes.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from jose import jwt
 from passlib.context import CryptContext
@@ -27,7 +27,7 @@ def verify_password(raw: str, hashed: str) -> bool:
 
 def create_access_token(subject: str, expires_minutes: int = 60 * 24) -> str:
     settings = get_settings()
-    expire = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)
+    expire = datetime.now(UTC) + timedelta(minutes=expires_minutes)
     payload = {"sub": subject, "exp": expire}
     return jwt.encode(payload, settings.app_secret, algorithm=_ALGORITHM)
 

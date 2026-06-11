@@ -8,7 +8,7 @@ lower-rung result — the product never blocks on the LLM.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from deadline_parser.confidence import ExtractionResult
 
@@ -22,7 +22,7 @@ SYSTEM_PROMPT = (
 
 def parse(text: str) -> ExtractionResult:
     try:
-        from agents.llm import LLMUnavailable, get_llm
+        from agents.llm import get_llm
 
         llm = get_llm()
         raw = llm.complete(text or "", system=SYSTEM_PROMPT, max_tokens=200)
@@ -37,7 +37,7 @@ def parse(text: str) -> ExtractionResult:
     resolved = None
     if data.get("date"):
         try:
-            resolved = datetime.fromisoformat(str(data["date"])).replace(tzinfo=timezone.utc)
+            resolved = datetime.fromisoformat(str(data["date"])).replace(tzinfo=UTC)
         except ValueError:
             resolved = None
     return ExtractionResult(

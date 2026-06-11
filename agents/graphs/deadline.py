@@ -10,8 +10,6 @@ calling the deadline_parser package.
 
 from __future__ import annotations
 
-from agents.state import DeadlineState
-
 
 def build_deadline_graph():
     """Return a compiled LangGraph for deadline extraction. TODO(phase-3)."""

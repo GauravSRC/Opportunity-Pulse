@@ -14,7 +14,6 @@ diffs against this baseline.
 from __future__ import annotations
 
 from alembic import op
-
 from app.db.base import Base
 from app.models import *  # noqa: F401,F403  (register all tables on metadata)
 

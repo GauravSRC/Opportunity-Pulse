@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 async def run_discovery(ctx: dict, source_keys: list[str] | None = None) -> dict:
     """Fetch + normalize listings for the given (or all enabled) sources."""
-    import sys
     import os
+    import sys
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "backend"))
 
     from app.db.session import SessionLocal

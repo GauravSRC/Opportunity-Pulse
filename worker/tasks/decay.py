@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-import sys
 import os
+import sys
+from datetime import UTC
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "backend"))
 
 
@@ -13,13 +15,14 @@ async def run_decay(ctx: dict) -> dict:
     Uses simple exponential decay:  urgency = exp(-days_to_deadline / half_life)
     Rolling/unknown deadlines use posting age with a longer half-life.
     """
+    import math
+    from datetime import datetime
+
     from app.db.session import SessionLocal
-    from app.models.ranking import RankScore
     from app.models.deadline import Deadline
     from app.models.enums import DeadlineKind
+    from app.models.ranking import RankScore
     from sqlalchemy import select
-    from datetime import datetime, timezone
-    import math
 
     FIXED_HALF_LIFE = 14.0   # days
     ROLLING_HALF_LIFE = 60.0
@@ -32,21 +35,18 @@ async def run_decay(ctx: dict) -> dict:
             str(d.listing_id): d
             for d in db.execute(select(Deadline)).scalars()
         }
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         for rs in scores:
             dl = deadlines.get(str(rs.listing_id))
             if dl and dl.resolved_date and dl.kind == DeadlineKind.fixed:
                 days = (dl.resolved_date - now).total_seconds() / 86400
-                if days < 0:
-                    urgency = 0.0
-                else:
-                    urgency = math.exp(-days / FIXED_HALF_LIFE)
+                urgency = 0.0 if days < 0 else math.exp(-days / FIXED_HALF_LIFE)
             else:
                 # Rolling or unknown: decay from posted_at or created_at
                 anchor = getattr(rs, "computed_at", now) or now
                 if anchor.tzinfo is None:
-                    anchor = anchor.replace(tzinfo=timezone.utc)
+                    anchor = anchor.replace(tzinfo=UTC)
                 days_old = (now - anchor).total_seconds() / 86400
                 urgency = math.exp(-days_old / ROLLING_HALF_LIFE)
 

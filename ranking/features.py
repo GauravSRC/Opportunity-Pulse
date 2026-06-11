@@ -8,25 +8,25 @@ All are pure functions in [0, 1].
 from __future__ import annotations
 
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 def _now(now: datetime | None) -> datetime:
-    return now or datetime.now(timezone.utc)
+    return now or datetime.now(UTC)
 
 
 def _aware(dt: datetime) -> datetime:
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
 def skill_overlap(profile_skills: list[str], listing_skills: list[str]) -> tuple[float, list[str]]:
     """Jaccard-ish overlap of skills. Returns (score, matched_skill_names)."""
     p = {s.strip().lower() for s in profile_skills if s and s.strip()}
-    l = {s.strip().lower() for s in listing_skills if s and s.strip()}
-    if not p or not l:
+    lst = {s.strip().lower() for s in listing_skills if s and s.strip()}
+    if not p or not lst:
         return 0.0, []
-    matched = sorted(p & l)
-    score = len(matched) / len(p | l)
+    matched = sorted(p & lst)
+    score = len(matched) / len(p | lst)
     return score, matched
 
 

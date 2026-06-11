@@ -5,11 +5,9 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.models.source import OpportunitySource
 from app.services import ranking_service, source_service
 
 router = APIRouter()

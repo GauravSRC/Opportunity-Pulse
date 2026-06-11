@@ -44,7 +44,7 @@ def main() -> None:
 
 
 def _seed(db) -> None:
-    from app.services import source_service, pipeline, ranking_service, profile_service
+    from app.services import pipeline, profile_service, ranking_service, source_service
     from sqlalchemy import select
 
     print("=== OpportunityPulse Demo Seed ===\n")
