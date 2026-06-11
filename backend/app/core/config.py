@@ -65,8 +65,21 @@ class Settings(BaseSettings):
     langsmith_project: str = "opportunitypulse"
     prometheus_enabled: bool = True
 
-    # Frontend origin (CORS)
+    # Frontend origin(s) for CORS. Accepts a single origin or a comma-separated
+    # list (e.g. a Vercel production URL plus preview URLs).
     web_origin: str = "http://localhost:3000"
+
+    @property
+    def cors_origins(self) -> list[str]:
+        """Parse ``web_origin`` into a normalized list of allowed CORS origins.
+
+        Browsers send the ``Origin`` header with no trailing slash and
+        Starlette's CORSMiddleware matches it by exact string, so a value like
+        ``https://app.vercel.app/`` (trailing slash) or a comma-separated list
+        would otherwise never match and the OPTIONS preflight would 400. This
+        splits on commas, trims whitespace, and strips trailing slashes.
+        """
+        return [origin.strip().rstrip("/") for origin in self.web_origin.split(",") if origin.strip()]
 
     @field_validator("database_url")
     @classmethod
