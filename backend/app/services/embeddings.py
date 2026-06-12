@@ -13,7 +13,12 @@ from app.models.enums import EmbeddingOwner
 
 
 def _as_floats(vector) -> list[float]:
-    return [float(x) for x in (vector or [])]
+    # NOTE: do not use `vector or []` — pgvector returns a numpy ndarray, and
+    # bool(ndarray) raises "truth value of an array ... is ambiguous". Check None
+    # explicitly, then iterate (works for list and ndarray alike).
+    if vector is None:
+        return []
+    return [float(x) for x in vector]
 
 
 def store_embedding(

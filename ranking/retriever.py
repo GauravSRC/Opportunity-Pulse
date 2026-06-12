@@ -12,7 +12,9 @@ import math
 
 def cosine(a: list[float], b: list[float]) -> float:
     """Cosine similarity in [-1, 1]; vectors may or may not be pre-normalized."""
-    if not a or not b or len(a) != len(b):
+    # Explicit None/length checks (not `not a or not b`): a numpy vector would
+    # make a bare truth-test raise "truth value of an array ... is ambiguous".
+    if a is None or b is None or len(a) != len(b) or len(a) == 0:
         return 0.0
     dot = sum(x * y for x, y in zip(a, b, strict=False))
     na = math.sqrt(sum(x * x for x in a)) or 1.0

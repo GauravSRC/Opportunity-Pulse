@@ -52,3 +52,17 @@ def trigger_rank(user_id: uuid.UUID, db: Session = Depends(get_db)) -> dict:
         return {"ok": True, "scored": n}
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/sources/{source_key}/purge")
+def purge_source_listings(source_key: str, db: Session = Depends(get_db)) -> dict:
+    """Delete every listing (and dependent rows) for one source.
+
+    Used to remove seeded/demo data from production (e.g. ``demo_fixture``). The
+    source is also disabled so a later ``/sources/ingest-all`` does not silently
+    re-seed it; re-enable via ``PATCH /sources/{key}`` to ingest again.
+    """
+    result = source_service.purge_source(db, source_key, disable=True)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    return result

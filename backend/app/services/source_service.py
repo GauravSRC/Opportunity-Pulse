@@ -5,10 +5,14 @@ from __future__ import annotations
 import pathlib
 
 import yaml
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
-from app.models.enums import AccessMethod
+from app.models.deadline import Deadline
+from app.models.embedding import Embedding
+from app.models.enums import AccessMethod, EmbeddingOwner
+from app.models.listing import DedupCluster, NormalizedListing, RawListing
+from app.models.ranking import RankScore
 from app.models.source import OpportunitySource
 
 _REGISTRY = pathlib.Path(__file__).resolve().parents[3] / "ingestion" / "registry.yaml"
@@ -55,3 +59,78 @@ def get_source(db: Session, key: str) -> OpportunitySource | None:
     return db.execute(
         select(OpportunitySource).where(OpportunitySource.key == key)
     ).scalar_one_or_none()
+
+
+def purge_source(db: Session, key: str, *, disable: bool = True) -> dict | None:
+    """Delete all listings + dependent rows for one source. Returns counts.
+
+    Removes seeded/demo data without touching other sources. Deletes in
+    FK-dependency order: rank_scores -> deadlines -> embeddings -> dedup_clusters
+    -> normalized_listings -> raw_listings. Returns ``None`` if the source key is
+    unknown. When ``disable`` is set, the source is left disabled so a later
+    ingest does not re-seed it.
+    """
+    source = get_source(db, key)
+    if source is None:
+        return None
+
+    listing_ids = [
+        row[0]
+        for row in db.execute(
+            select(NormalizedListing.id).where(NormalizedListing.source_id == source.id)
+        ).all()
+    ]
+
+    deleted = {
+        "rank_scores": 0,
+        "deadlines": 0,
+        "embeddings": 0,
+        "clusters": 0,
+        "listings": 0,
+        "raw_listings": 0,
+    }
+
+    if listing_ids:
+        deleted["rank_scores"] = db.execute(
+            delete(RankScore).where(RankScore.listing_id.in_(listing_ids))
+        ).rowcount
+        deleted["deadlines"] = db.execute(
+            delete(Deadline).where(Deadline.listing_id.in_(listing_ids))
+        ).rowcount
+        deleted["embeddings"] = db.execute(
+            delete(Embedding).where(
+                Embedding.owner_type == EmbeddingOwner.listing,
+                Embedding.owner_id.in_(listing_ids),
+            )
+        ).rowcount
+        # Drop clusters whose canonical listing is being removed; first detach any
+        # listing still pointing at them so the cluster_id FK never dangles.
+        cluster_ids = [
+            row[0]
+            for row in db.execute(
+                select(DedupCluster.id).where(
+                    DedupCluster.canonical_listing_id.in_(listing_ids)
+                )
+            ).all()
+        ]
+        if cluster_ids:
+            db.execute(
+                update(NormalizedListing)
+                .where(NormalizedListing.cluster_id.in_(cluster_ids))
+                .values(cluster_id=None)
+            )
+            deleted["clusters"] = db.execute(
+                delete(DedupCluster).where(DedupCluster.id.in_(cluster_ids))
+            ).rowcount
+
+    deleted["listings"] = db.execute(
+        delete(NormalizedListing).where(NormalizedListing.source_id == source.id)
+    ).rowcount
+    deleted["raw_listings"] = db.execute(
+        delete(RawListing).where(RawListing.source_id == source.id)
+    ).rowcount
+
+    if disable:
+        source.enabled = False
+    db.commit()
+    return {"source": key, "disabled": disable, "deleted": deleted}
