@@ -2,7 +2,7 @@
 
 <p align="center">
   <b>A semantic, multi-agent platform that finds, dedups, ranks, and explains
-  opportunities across 30+ sources — and drafts the right outreach for each.</b>
+  opportunities across multiple heterogeneous sources — and drafts the right outreach for each.</b>
 </p>
 
 ---
@@ -15,34 +15,138 @@ It is designed to feel like a real product students use every week — not a dem
 
 ## ✨ Key Features
 
+- **Unified opportunity feed** — ranked against your profile with explainable match scores (semantic relevance, skill overlap, recency, urgency, feedback).
+- **Multiple heterogeneous sources** — Greenhouse, Lever, GitHub, arXiv, Kaggle, Remotive, and more via official APIs, RSS, sitemaps, and ethical scraping.
 - **Semantic matching** against your profile using embeddings (not keyword-only).
-- **Cross-source deduplication** via blocking + embeddings + fuzzy matching.
-- **Fuzzy deadline NLP** that handles relative phrases ("two weeks before demo day", "rolling admission until filled", "end of quarter").
-- **Urgency / decay model** estimating how soon an opportunity is likely to close.
-- **Type-routed outreach** — cold email *only* for research/lab roles; cover letter / SOP / team pitch / proposal otherwise. Always human-approved, never auto-sent.
+- **Cross-source deduplication** via blocking + embeddings + fuzzy matching; dedup confidence tracking.
+- **Fuzzy deadline NLP** that handles relative phrases ("two weeks before demo day", "rolling admission until filled", "end of quarter"); human review queue for low-confidence extractions.
+- **Urgency / decay model** — exponential decay and posting-age weighting; deadline-driven alerts.
+- **Type-routed outreach generation** — cold email *only* for research/lab roles; cover letter / SOP / team pitch / proposal otherwise. Draft-only (human-in-the-loop approval; never auto-sent).
 - **Explainable ranking** — every score breaks down into semantic, skill, recency, and urgency components.
+- **Deadline tracker** — urgency-sorted, with `.ics` calendar export.
 - **Alerts & reminders** for high-fit, soon-to-close opportunities.
-- **Chrome extension** that shows your live match score on a listing page.
-- **Prometheus `/metrics`** endpoint for observability.
+- **Chrome extension** — live match-score badge on supported job boards (Greenhouse, Lever, Remotive).
+- **Feedback loop** — implicit (save/dismiss/apply) and explicit (thumbs) signals improve per-user ranking weights.
+- **Observability** — LangSmith tracing, Prometheus `/metrics` endpoint, structured logs.
 
 ---
 
-## 🏗️ Architecture at a Glance
+## 🏗️ Architecture
 
 ```
-Next.js (web) + Chrome MV3 (extension)
-        ↓
-FastAPI sync API  (http://localhost:8000)
-        ↓ enqueue
-Redis queue
-        ↓
-Arq workers  (cron: ingest every 30 min, dedup/decay hourly, alerts every 15 min)
-        ↓
-PostgreSQL + pgvector
+                        ┌─────────────┐       ┌──────────────┐
+   Browser/Extension ───► Next.js App ├──────► FastAPI Sync ├─────┐
+                        └─────────────┘       │  API (read, │      │
+                                              │  search,    │      │
+                                              │  draft)     │      │
+                                              └──────┬──────┘      │
+                                                     │             │
+                                            ┌────────▼─────────┐   │
+                                            │ Redis queue/cache├──┐│
+                                            └────────┬─────────┘  ││
+                                                     │            ││
+        ┌────────────────── Async Workers (LangGraph) ──┐        ││
+        │ Discovery → Normalize → Dedup → Deadline     │        ││
+        │ → Ranking → Decay → Alerts (7 orchestrated  │        ││
+        │ pipelines; Redis-backed queue)               │        ││
+        └─────────────────────┬──────────────────────┘        ││
+                              │                               ││
+                      ┌───────▼─────────┐          ┌──────────▼┘│
+                      │ Neon PostgreSQL │          │ LangSmith  │
+                      │ + pgvector      │          │ + OTel     │
+                      │ + HNSW index    │          └────────────┘
+                      └─────────────────┘
 ```
 
-LangSmith + Prometheus + structured logs for observability.
-See [`ARCHITECTURE.md`](ARCHITECTURE.md).
+> **Production note:** In the current deployment, ingestion is triggered via API calls (`POST /sources/{key}/ingest`) rather than the Arq cron worker. The worker-based cron schedule (discovery every 30 min, dedup/decay/deadline hourly, alerts every 15 min) is fully wired and available for self-hosted deployments.
+
+LangSmith + Prometheus + structured logs for observability. See [`ARCHITECTURE.md`](ARCHITECTURE.md).
+
+### Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Backend | FastAPI (Python 3.11+), SQLAlchemy ORM, Alembic migrations |
+| Data | Neon PostgreSQL + pgvector extension (free tier, auto-enabled), Redis (Upstash or equivalent) |
+| ML | sentence-transformers (hashing provider default for zero dependencies; BAAI/bge-small-en-v1.5 or sentence-transformers swap) |
+| Agents | LangGraph (stateful orchestration); LangChain (loaders, splitters, LLM abstraction only) |
+| LLM | Claude (default for reasoning/drafting), OpenAI, Ollama (local fallback) |
+| Frontend | Next.js App Router (Vercel production) |
+| Extension | Chrome MV3 |
+| Discovery | Tavily (default) or SerpAPI for web-search-driven source queries; Playwright (last resort, JavaScript-required pages) |
+| Observability | LangSmith, Prometheus (prometheus_client), structured logs |
+| Ops | Docker + docker-compose (local dev); GitHub Actions (CI) |
+
+---
+
+## 📁 Repository Layout
+
+```
+backend/             FastAPI + SQLAlchemy; 54 passing tests (SQLite in-memory)
+  app/api/           profiles, opportunities, outreach, deadlines, feedback,
+                     alerts, sources, admin — full coverage, no stubs
+  app/services/      pipeline, ranking_service, outreach_service,
+                     feedback_service, profile_service, source_service
+  app/models/        SQLAlchemy ORM (UUID, JSON, array, pgvector types)
+  app/db/            session, base, types (portable across DB backends)
+  tests/             integration tests (54 passing)
+  alembic/           migrations (auto-applied on backend startup)
+
+worker/              Arq async queue; 7 task types (all wired to service layer)
+  tasks/             ingest, normalize, dedup, rank, deadline, decay, alerts
+  arq_app.py         cron schedule (discovery 30min, dedup/decay/deadline 1h, alerts 15min)
+
+agents/              LangGraph orchestration
+  graphs/            discovery, dedup_rank, deadline, outreach, feedback, notification
+  nodes/             per-graph node implementations
+  state.py, llm.py   typed GraphState and provider-agnostic LLM abstraction
+
+ingestion/           multiple source adapters + registry
+  sources/           demo_fixture (offline), greenhouse, lever, github, arxiv,
+                     remotive, kaggle, rss_generic, search_tavily, + stubs
+  registry.yaml      source metadata + config
+  normalize.py       adapter output → NormalizedListing schema
+
+ranking/             retrieval, reranking, scoring
+  embedder.py        hashing or sentence-transformers swap
+  retriever.py       cosine similarity (pgvector HNSW index in production)
+  scorer.py          blend (semantic + skill + recency + urgency + feedback)
+  explain.py         per-component contribution breakdown
+
+dedup/               cross-source deduplication
+  blocker.py, similarity.py, cluster.py, merge.py
+
+deadline_parser/     rules → NER → LLM fallback with confidence
+  rules.py, relative.py, ner.py, llm_fallback.py
+
+email_agent/         type-routed outreach generation
+  router.py          opportunity type → artifact kind (cold_email, cover_letter, sop, ...)
+  rag.py, generators/
+  templates/
+
+web/                 Next.js App Router (all pages functional)
+  app/onboarding/    3-step profile creation
+  app/feed/          ranked feed + search + filters
+  app/opportunity/[id]/  detail + explanation panel
+  app/outreach/[id]  draft editor (type-routed)
+  app/deadlines/     urgency tracker + calendar export
+  app/settings/      profile editor
+  components/        OpportunityCard, MatchScoreBadge, DeadlineBadge, etc.
+  lib/api.ts         typed API client
+
+extension/           Chrome MV3 (functional)
+  content/           injects match-score badge on Greenhouse/Lever/Remotive pages
+  popup/             score lookup, "View in app" action
+  background/        service worker, score request proxy
+
+infra/
+  docker/            backend.Dockerfile, worker.Dockerfile (multi-stage)
+  deploy/            Railway deployment config (formerly Fly.io)
+
+docs/                architecture, data model, ML design, sourcing, roadmap, interview
+scripts/             demo_seed.py, seed_sources.py
+tests/               cross-service integration tests (54 passing)
+```
 
 ---
 
@@ -51,8 +155,10 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md).
 ### Prerequisites
 
 - Python 3.11+
+- PostgreSQL 15+ (or local Postgres via Docker)
 - Node.js 18+
 - Docker + Docker Compose
+- Redis (or local Redis via Docker)
 
 ### 1 — Clone and Configure
 
@@ -60,7 +166,8 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md).
 git clone <repo-url> opportunity_pulse
 cd opportunity_pulse
 cp .env.example .env
-# Edit .env: set ANTHROPIC_API_KEY (or OPENAI_API_KEY), leave the rest as defaults for local dev
+# Fill in: ANTHROPIC_API_KEY (or OPENAI_API_KEY), TAVILY_API_KEY (or SERPAPI_API_KEY),
+# GITHUB_TOKEN, KAGGLE_USERNAME + KAGGLE_API_KEY, DATABASE_URL, REDIS_URL
 ```
 
 ### 2 — Install Python Dependencies
@@ -87,7 +194,7 @@ cd ..
 
 ```bash
 python -m pytest backend/tests/ tests/ -q
-# Expected: 41 passed
+# Expected: 54 passed
 ```
 
 ### 6 — Seed Demo Data
@@ -132,287 +239,16 @@ arq worker.arq_app.WorkerSettings
 
 ```bash
 docker compose up --build
-# API:      http://localhost:8000/docs
-# Web:      http://localhost:3000
+# Backend:  http://localhost:8000/docs
+# Frontend: http://localhost:3000
+# Postgres: localhost:5432
+# Redis:    localhost:6379
 # Metrics:  http://localhost:8000/metrics
 ```
 
 ---
 
-## ☁️ Deploying to Production (Fly.io)
-
-The repo ships with a `fly.toml` in `infra/deploy/`. Steps:
-
-```bash
-# Install flyctl: https://fly.io/docs/hands-on/install-flyctl/
-fly auth login
-
-# Create the app (first time only)
-fly launch --no-deploy --config infra/deploy/fly.toml
-
-# Provision a managed Postgres (Fly Postgres)
-fly postgres create --name opportunitypulse-db
-fly postgres attach opportunitypulse-db
-
-# Set secrets
-fly secrets set ANTHROPIC_API_KEY=sk-ant-... REDIS_URL=redis://...
-
-# Deploy
-fly deploy --config infra/deploy/fly.toml
-
-# Your live URL will be:
-#   https://<app-name>.fly.dev
-# Check: fly status --config infra/deploy/fly.toml
-```
-
-The web frontend can be deployed separately to Vercel:
-
-```bash
-cd web
-npx vercel --prod
-# Vercel will give you: https://<project>.vercel.app
-```
-
-Set `NEXT_PUBLIC_API_URL=https://<app-name>.fly.dev` in your Vercel environment variables so the frontend points at the deployed backend.
-
----
-
-## 📡 Key API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/profiles` | Create user + profile |
-| `GET` | `/opportunities` | Ranked feed (q, type, remote, user_id) |
-| `GET` | `/opportunities/{id}/explanation` | Score breakdown |
-| `POST` | `/opportunities/{id}/outreach` | Generate type-routed draft |
-| `POST` | `/deadlines/extract` | Ad hoc deadline extraction |
-| `POST` | `/feedback` | Submit feedback signal |
-| `GET` | `/admin/health` | Source health + pipeline status |
-| `POST` | `/admin/rank/{user_id}` | Recompute scores for a user |
-| `GET` | `/metrics` | Prometheus scrape endpoint |
-| `GET` | `/healthz` | Liveness probe |
-
-Full interactive docs at `http://localhost:8000/docs`.
-
----
-
-## 📚 Documentation
-
-- [`PROJECT.md`](PROJECT.md) — full end-to-end design and workflow.
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) — system map and data flow.
-- [`CLAUDE.md`](CLAUDE.md) — contributor/agent guide and conventions.
-- [`docs/`](docs/) — deep-dives: data model, ML design, agents, sourcing, API, evaluation, roadmap, interview framing.
-
----
-
-## ⚖️ Legal / Ethical
-
-We honor `robots.txt` and source Terms of Service, prefer official/structured endpoints over scraping, never scrape login-walled or paid data, store provenance for every listing, encrypt user PII at rest, and never auto-send outreach. See [`docs/sourcing.md`](docs/sourcing.md).
-
----
-
-## 📄 License
-
-MIT — see [`LICENSE`](LICENSE).
-
----
----
-
-# OpportunityPulse — Full Reference
-
-A real-time, semantic opportunity discovery platform that continuously finds, deduplicates, ranks, and explains jobs, internships, research roles, fellowships, hackathons, grants, and conferences from 30+ web sources. Extracts fuzzy deadlines, models urgency, and drafts type-routed outreach artifacts (cold email for research/lab roles; cover letter, SOP, team pitch, or proposal otherwise).
-
----
-
-## Features
-
-- **Unified opportunity feed** — ranked against your profile with explainable match scores (semantic relevance, skill overlap, recency, urgency, feedback).
-- **30+ sources** — Greenhouse, Lever, GitHub, arXiv, Kaggle, Remotive, and more via official APIs, RSS, sitemaps, and ethical scraping.
-- **Smart deduplication** — cross-source clustering by URL, title, and embedding similarity; dedup confidence tracking.
-- **Fuzzy deadline extraction** — rules → NER → LLM fallback ladder with confidence gating; human review queue for low-confidence extractions.
-- **Urgency modeling** — exponential decay and posting-age weighting; deadline-driven alerts.
-- **Type-routed outreach generation** — cold email for professor/lab roles; tailored cover letter, SOP, team pitch, or proposal otherwise. Draft-only (human-in-the-loop approval; never auto-sent).
-- **Deadline tracker** — urgency-sorted, with `.ics` calendar export.
-- **Chrome extension** — live match-score badge on supported job boards (Greenhouse, Lever, Remotive).
-- **Feedback loop** — implicit (save/dismiss/apply) and explicit (thumbs) signals improve per-user ranking weights.
-- **Observability** — LangSmith tracing, Prometheus `/metrics` endpoint, structured logs.
-
----
-
-## Architecture
-
-```
-                        ┌─────────────┐       ┌──────────────┐
-   Browser/Extension ───► Next.js App ├──────► FastAPI Sync ├─────┐
-                        └─────────────┘       │  API (read, │      │
-                                              │  search,    │      │
-                                              │  draft)     │      │
-                                              └──────┬──────┘      │
-                                                     │             │
-                                            ┌────────▼─────────┐   │
-                                            │ Redis queue/cache├──┐│
-                                            └────────┬─────────┘  ││
-                                                     │            ││
-        ┌────────────────── Async Workers (LangGraph) ──┐        ││
-        │ Discovery → Normalize → Dedup → Deadline     │        ││
-        │ → Ranking → Decay → Alerts (7 orchestrated  │        ││
-        │ pipelines; Redis-backed queue)               │        ││
-        └─────────────────────┬──────────────────────┘        ││
-                              │                               ││
-                      ┌───────▼─────────┐          ┌──────────▼┘│
-                      │ Neon PostgreSQL │          │ LangSmith  │
-                      │ + pgvector      │          │ + OTel     │
-                      │ + HNSW index    │          └────────────┘
-                      └─────────────────┘
-```
-
-**Tech stack:**
-
-| Layer | Technology |
-|-------|-----------|
-| Backend | FastAPI (Python 3.11+), SQLAlchemy ORM, Alembic migrations |
-| Data | Neon PostgreSQL + pgvector extension (free tier, auto-enabled), Redis (Upstash or equivalent) |
-| ML | sentence-transformers (hashing provider default for zero dependencies; BAAI/bge-small-en-v1.5 or sentence-transformers swap) |
-| Agents | LangGraph (stateful orchestration); LangChain (loaders, splitters, LLM abstraction only) |
-| LLM | Claude (default for reasoning/drafting), OpenAI, Ollama (local fallback) |
-| Frontend | Next.js App Router (Vercel production) |
-| Extension | Chrome MV3 |
-| Discovery | Tavily (default) or SerpAPI for web-search-driven source queries; Playwright (last resort, JavaScript-required pages) |
-| Observability | LangSmith, Prometheus (prometheus_client), structured logs |
-| Ops | Docker + docker-compose (local dev); GitHub Actions (CI) |
-
----
-
-## Repository Layout
-
-```
-backend/             FastAPI + SQLAlchemy; 41 passing tests (SQLite in-memory)
-  app/api/           profiles, opportunities, outreach, deadlines, feedback,
-                     alerts, sources, admin — full coverage, no stubs
-  app/services/      pipeline, ranking_service, outreach_service,
-                     feedback_service, profile_service, source_service
-  app/models/        SQLAlchemy ORM (UUID, JSON, array, pgvector types)
-  app/db/            session, base, types (portable across DB backends)
-  tests/             integration tests (41 passing)
-  alembic/           migrations (auto-applied on backend startup)
-
-worker/              Arq async queue; 7 task types (all wired to service layer)
-  tasks/             ingest, normalize, dedup, rank, deadline, decay, alerts
-  arq_app.py         cron schedule (discovery 30min, dedup/decay/deadline 1h, alerts 15min)
-
-agents/              LangGraph orchestration
-  graphs/            discovery, dedup_rank, deadline, outreach, feedback, notification
-  nodes/             per-graph node implementations
-  state.py, llm.py   typed GraphState and provider-agnostic LLM abstraction
-
-ingestion/           30+ source adapters + registry
-  sources/           demo_fixture (offline), greenhouse, lever, github, arxiv,
-                     remotive, kaggle, rss_generic, search_tavily, + stubs
-  registry.yaml      source metadata + config
-  normalize.py       adapter output → NormalizedListing schema
-
-ranking/             retrieval, reranking, scoring
-  embedder.py        hashing or sentence-transformers swap
-  retriever.py       cosine similarity (pgvector HNSW index in production)
-  scorer.py          blend (semantic + skill + recency + urgency + feedback)
-  explain.py         per-component contribution breakdown
-
-dedup/               cross-source deduplication
-  blocker.py, similarity.py, cluster.py, merge.py
-
-deadline_parser/     rules → NER → LLM fallback with confidence
-  rules.py, relative.py, ner.py, llm_fallback.py
-
-email_agent/         type-routed outreach generation
-  router.py          opportunity type → artifact kind (cold_email, cover_letter, sop, ...)
-  rag.py, generators/
-  templates/
-
-web/                 Next.js App Router (all pages functional)
-  app/onboarding/    3-step profile creation
-  app/feed/          ranked feed + search + filters
-  app/opportunity/[id]/  detail + explanation panel
-  app/outreach/[id]  draft editor (type-routed)
-  app/deadlines/     urgency tracker + calendar export
-  app/settings/      profile editor
-  components/        OpportunityCard, MatchScoreBadge, DeadlineBadge, etc.
-  lib/api.ts         typed API client
-
-extension/           Chrome MV3 (functional)
-  content/           injects match-score badge on Greenhouse/Lever/Remotive pages
-  popup/             score lookup, "View in app" action
-  background/        service worker, score request proxy
-
-infra/
-  docker/            backend.Dockerfile, worker.Dockerfile (multi-stage)
-  deploy/            Railway deployment config (formerly Fly.io)
-
-docs/                architecture, data model, ML design, sourcing, roadmap, interview
-scripts/             demo_seed.py, seed_sources.py
-tests/               cross-service integration tests (41 passing)
-```
-
----
-
-## Getting Started
-
-### Prerequisites
-
-- Python 3.11+
-- PostgreSQL 15+ (or local Postgres via Docker)
-- Redis (or local Redis via Docker)
-- Node.js 18+ (for web frontend)
-
-### Install
-
-```bash
-# Clone and install Python dependencies
-git clone <repo>
-cd opportunity_pulse
-pip install -e ".[dev]"
-
-# Set up environment
-cp .env.example .env
-# Fill in: ANTHROPIC_API_KEY (or OPENAI_API_KEY), TAVILY_API_KEY (or SERPAPI_API_KEY),
-# GITHUB_TOKEN, KAGGLE_USERNAME + KAGGLE_API_KEY, DATABASE_URL, REDIS_URL
-```
-
-### Local Development (Full Stack)
-
-```bash
-# Bring up infrastructure (Postgres + pgvector + Redis)
-docker compose up -d db redis
-
-# Apply database migrations
-cd backend && alembic upgrade head && cd ..
-
-# Run backend (dev server, auto-reload, OpenAPI docs at http://localhost:8000/docs)
-cd backend && uvicorn app.main:app --reload && cd ..
-
-# Run worker (in another terminal)
-arq worker.arq_app.WorkerSettings
-
-# Run frontend (in another terminal)
-cd web && npm install && npm run dev
-# Open http://localhost:3000
-
-# Run tests
-python -m pytest backend/tests/ tests/ -q  # 41 passing on SQLite in-memory
-```
-
-### Full Stack (All 5 Containers)
-
-```bash
-docker compose up --build
-# Backend:  http://localhost:8000
-# Frontend: http://localhost:3000
-# Postgres: localhost:5432
-# Redis:    localhost:6379
-```
-
----
-
-## Deployment
+## ☁️ Deployment
 
 ### Production Stack
 
@@ -485,7 +321,18 @@ curl https://<railway-backend-url>/opportunities?limit=5
 
 ---
 
-## Ingestion Sources
+## 🌐 Live Deployment
+
+| | URL |
+|---|---|
+| **Frontend** | https://opportunity-pulse.vercel.app |
+| **Backend API** | https://opportunity-pulse-api-production-492e.up.railway.app |
+| **API Docs** | https://opportunity-pulse-api-production-492e.up.railway.app/docs |
+| **Health** | https://opportunity-pulse-api-production-492e.up.railway.app/healthz |
+
+---
+
+## 🔌 Ingestion Sources
 
 Currently enabled by default:
 
@@ -517,7 +364,7 @@ curl -X POST https://<backend-url>/sources/ingest-all
 
 ---
 
-## Key API Endpoints
+## 📡 Key API Endpoints
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
@@ -539,12 +386,14 @@ curl -X POST https://<backend-url>/sources/ingest-all
 | `/readyz` | `GET` | Readiness probe |
 | `/metrics` | `GET` | Prometheus metrics (text/plain 0.0.4) |
 
+Full interactive docs at `http://localhost:8000/docs`.
+
 ---
 
-## Testing
+## 🧪 Testing
 
 ```bash
-# Run all tests (41 passing on SQLite in-memory; no Postgres needed for local dev)
+# Run all tests (54 passing on SQLite in-memory; no Postgres needed for local dev)
 python -m pytest backend/tests/ tests/ -q
 
 # Run with coverage
@@ -556,7 +405,7 @@ ruff check . && ruff format .
 
 ---
 
-## Production Lessons Learned
+## 🔧 Production Lessons Learned
 
 **CORS origin normalization** — Railway/Neon/Vercel send URLs with trailing slashes. The `Settings.cors_origins` property parses `WEB_ORIGIN` as a comma-separated list and strips trailing slashes, since Starlette's `CORSMiddleware` exact-matches the browser's `Origin` header.
 
@@ -574,7 +423,7 @@ ruff check . && ruff format .
 
 ---
 
-## Current Limitations
+## ⚠️ Current Limitations
 
 - **Outreach artifacts are draft-only.** No auto-sending; all drafts require human approval before send.
 - **Demo data must be purged before production.** The `demo_fixture` source includes fake URLs (example.edu, Stanford Vision Lab, MIT CSAIL). Always run `POST /admin/sources/demo_fixture/purge` after going live.
@@ -585,7 +434,7 @@ ruff check . && ruff format .
 
 ---
 
-## Development Notes
+## 🛠️ Development Notes
 
 - **Type hints everywhere** — Python codebase is fully typed; run `mypy` or your IDE's type checker to catch issues early.
 - **SQLite in-memory for tests** — The test suite uses SQLite (no Postgres needed) and is 5–10x faster than PostgreSQL integration tests. `backend/tests/conftest.py` overrides `get_db` with a transactional test session.
@@ -595,26 +444,41 @@ ruff check . && ruff format .
 
 ---
 
-## Contributing
+## 🤝 Contributing
 
 See [`CLAUDE.md`](CLAUDE.md) for architecture conventions, tech stack rationale, common commands, and contributor notes. Open an issue or pull request with discussion.
 
 ---
 
-## License
+## 📚 Documentation
 
-MIT. See [LICENSE](LICENSE) for details.
+- [`PROJECT.md`](PROJECT.md) — full end-to-end design and workflow.
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — system map and data flow.
+- [`CLAUDE.md`](CLAUDE.md) — contributor/agent guide and conventions.
+- [`docs/`](docs/) — deep-dives: data model, ML design, agents, sourcing, API, evaluation, roadmap, interview framing.
 
 ---
 
-## Contact & Interview
+## ⚖️ Legal / Ethical
+
+We honor `robots.txt` and source Terms of Service, prefer official/structured endpoints over scraping, never scrape login-walled or paid data, store provenance for every listing, encrypt user PII at rest, and never auto-send outreach. See [`docs/sourcing.md`](docs/sourcing.md).
+
+---
+
+## 📄 License
+
+MIT. See [`LICENSE`](LICENSE) for details.
+
+---
+
+## 🎤 Contact & Interview
 
 Built as an interview centerpiece for Info Edge (Naukri), Fidelity, and DTDC. See [`docs/interview.md`](docs/interview.md) for 30-second pitch, 2-minute walkthrough, and talking points tailored to each company's focus.
 
-For questions about the system or contributions, open an issue.
+For questions about the system or contributions, open an issue .
 
 ---
 
-## Status
+## 📊 Status
 
-> **Production-ready.** 41 tests passing. Full pipeline running end-to-end (ingest → normalize → dedup → embed → deadline extraction → ranking → outreach generation). All core services and API routers wired. Docker images build and start healthy. Deployed on Vercel (frontend), Railway (backend), Neon (database), Upstash (Redis).
+> **Production-ready.** 54 tests passing. Full pipeline running end-to-end (ingest → normalize → dedup → embed → deadline extraction → ranking → outreach generation). All core services and API routers wired. Docker images build and start healthy. Deployed on Vercel (frontend), Railway (backend), Neon (database), Upstash (Redis).
