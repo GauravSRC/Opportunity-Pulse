@@ -115,7 +115,8 @@ docs/             Design deep-dives
 - Web: **Next.js** (App Router). Extension: **Chrome MV3**.
 - Observability: **LangSmith** + **Prometheus** (`/metrics` endpoint, `prometheus_client`,
   `_MetricsMiddleware` records request count + latency per path) + structured logs.
-- Ops: **Docker** + docker-compose; **GitHub Actions** (CI + deploy to Fly.io).
+- Ops: **Docker** + docker-compose; **GitHub Actions** (CI).
+- Production: **Railway** (backend), **Neon** (Postgres), **Vercel** (frontend).
 
 ## Common commands
 
@@ -133,7 +134,7 @@ docker compose up --build
 uvicorn app.main:app --reload          # dev server -> http://localhost:8000/docs
 alembic upgrade head                   # apply migrations (requires Postgres)
 
-# Tests — all 41 pass on SQLite in-memory, no Postgres needed
+# Tests — 54 pass on SQLite in-memory, no Postgres needed
 python -m pytest backend/tests/ tests/ -q
 
 # Seed demo data (from repo root; requires running backend DB)
@@ -150,9 +151,15 @@ npm install && npm run dev             # -> http://localhost:3000
 # Lint / format (Python)
 ruff check . && ruff format .
 
-# Deploy to Fly.io
-fly deploy --config infra/deploy/fly.toml
-fly status --config infra/deploy/fly.toml   # shows live URL
+# Production ingestion (backend must be live)
+API=https://opportunity-pulse-api-production-492e.up.railway.app
+curl -s -X POST $API/sources/sync                           # sync registry
+curl -s -X PATCH $API/sources/demo_fixture -H 'Content-Type: application/json' -d '{"enabled": false}'
+curl -s -X PATCH $API/sources/remotive -H 'Content-Type: application/json' -d '{"enabled": true}'
+curl -s -X POST $API/sources/{remotive,arxiv_cs,github_gsoc}/ingest
+curl -s -X POST $API/sources/dedup
+curl -s -X POST $API/admin/rank/{user_id}                 # compute scores
+curl -s -X POST $API/admin/sources/demo_fixture/purge     # remove demo data
 ```
 
 ## Key API endpoints
@@ -253,3 +260,50 @@ are easy to break:
 `ranking/scorer.py` (score blend + explanation) →
 `email_agent/router.py` (outreach type routing) →
 `web/app/feed/page.tsx` (frontend entry point).
+
+---
+
+## Production deployment
+
+**Architecture (as of 2026-06-12):**
+- **Frontend:** Vercel (Next.js). Base URL inferred from the domain or set via `NEXT_PUBLIC_API_BASE_URL`.
+- **Backend:** Railway Docker service (runs migrations on startup, binds `$PORT`).
+- **Database:** Neon Postgres with pgvector extension (auto-enabled by migration).
+- **Redis:** Upstash (or Railway Redis if deployed as a separate service).
+- **Embeddings:** hashing provider (zero deps). Production doesn't use `sentence-transformers` or cross-encoder to keep runtime <512 MB.
+- **Outreach LLM:** optional via `ANTHROPIC_API_KEY` or omitted (degrades to deterministic outreach).
+
+**Lessons learned (critical for future maintainers):**
+
+1. **CORS origin normalization** (`backend/app/core/config.py`): Railway/Neon/Vercel send URLs with trailing slashes. `Settings.cors_origins` parses `WEB_ORIGIN` as a comma-separated list, strips trailing slashes, because Starlette's `CORSMiddleware` exact-matches the browser's `Origin` header.
+
+2. **Railway environment variables:** All secrets come from Railway's dashboard Variables. Changing one triggers a redeploy. The `PYTHONPATH` for multi-package imports is set in the Dockerfile, not in Railway config.
+
+3. **pgvector ndarray crash** (`backend/app/services/embeddings.py`): pgvector returns numpy `ndarray`, not list. Code doing `if vector:` (truth-test) crashes with "truth value of an array ... is ambiguous". Fix: explicit `if vector is None`. Tests passed on SQLite (vectors stored as JSON) but failed on production pgvector. The bug existed in `_as_floats` and `ranking.retriever.cosine`.
+
+4. **Source registry enabled-state behavior** (`backend/app/services/source_service.py`): `sync_registry` upserts sources from `ingestion/registry.yaml` but **never changes `enabled` on existing rows**. To enable/disable a source at runtime, use `PATCH /sources/{key}`.
+
+5. **Demo-fixture cleanup** (`backend/app/api/admin.py`): `POST /admin/sources/demo_fixture/purge` deletes all listings + dependent rows (rank_scores, deadlines, embeddings, dedup_clusters) in FK-safe order and disables the source. Critical before production goes live: removes seeded data from the feed.
+
+6. **remotive ingestion:** Free, no-key remote-jobs API (`https://remotive.com/api/remote-jobs`). Returns 50 listings per page. Reliable, no redirects.
+
+7. **arxiv HTTP→HTTPS redirect:** arxiv.org feed endpoint changed to require HTTPS. Update the adapter if the URL ever changes.
+
+**Operational runbook:**
+
+- **Add a new source:** Create an adapter in `ingestion/sources/{name}.py`, register in `ADAPTERS` dict in `__init__.py`, add entry to `ingestion/registry.yaml`, commit, deploy, then `POST /sources/sync`.
+- **Enable/disable a source:** `PATCH /sources/{key} {"enabled": true/false}`. This persists to the DB and takes effect on the next `POST /sources/ingest-all` or `POST /sources/{key}/ingest`.
+- **Ingest a source:** `POST /sources/{key}/ingest` (one source, synchronous) or `POST /sources/ingest-all` (all enabled sources). Returns `{source, created, skipped, errors}`.
+- **Rank a profile:** `POST /admin/rank/{user_id}` (recomputes all rank scores for that user). Returns `{ok, scored}` on success, 404 if user/profile missing.
+- **Purge demo data:** `POST /admin/sources/demo_fixture/purge` (deletes all demo listings + dependents, disables the source).
+- **Validate production health:** `GET /admin/health` (source enabled/disabled counts, last_run_at per source, success rates). `GET /admin/health` + `GET /opportunities?limit=1` to confirm the feed has real opportunities.
+
+**Future contributor notes:**
+
+- Always test ranking changes locally with SQLite first (in-memory, fast) before testing with pgvector. The ndarray handling is easy to break.
+- When adding new ingestion sources, ensure the adapter `fetch()` is async-tolerant (errors are isolated per source, not fatal).
+- The frontend localStorage key is `userId` (not `profileId`). Onboarding stores `userId` + `profileId` and passes `userId` to the API for personalization.
+- Demo-fixture is useful for offline testing but **must be disabled + purged in production**. The demo URLs (example.edu, stanford-vision-lab, etc.) are fake and should never appear in the live feed.
+- If production feed shows demo data after you ingest real sources, you forgot to run the purge endpoint.
+- `WEB_ORIGIN` on Railway must exactly match the Vercel domain (incl. https:// but no trailing slash). Mismatches cause CORS 400 on OPTIONS preflight.
+- Migrations run automatically on backend startup. There is no separate migration step; if you change models, commit, push, Railway redeploys and the migration runs.
